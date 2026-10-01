@@ -3,24 +3,42 @@
 #include <chrono>
 #include <iomanip>
 #include <ios>
-#include <memory>
 #include <ostream>
+
 template <class T> class CStyle2DArrCompat {
 public:
-  CStyle2DArrCompat() : data(nullptr), raw_data(nullptr) {}
+  CStyle2DArrCompat(int cnt) : raw_data(new T *[cnt]()), size(cnt) {}
+  CStyle2DArrCompat() : raw_data(nullptr), size(0) {}
+  CStyle2DArrCompat(const CStyle2DArrCompat &) = delete;
+  CStyle2DArrCompat &operator=(const CStyle2DArrCompat &) = delete;
 
-  CStyle2DArrCompat(int cnt)
-      : data(std::make_unique<std::unique_ptr<T>[]>(cnt)),
-        raw_data(data.get()) {}
+  ~CStyle2DArrCompat() {
+    if (raw_data == nullptr)
+      return;
 
-  auto &get_unique_ptr() { return data; }
+    for (int i = 0; i < size; i++) {
+      if (raw_data[i] == nullptr)
+        continue;
+
+      delete[] raw_data[i];
+    }
+    delete[] raw_data;
+  }
+
+  T *serve(int index, int cnt) {
+    if (size <= index)
+      return nullptr;
+
+    delete[] raw_data[index];
+    raw_data[index] = new T[cnt];
+    return raw_data[index];
+  }
 
   T **get() { return raw_data; }
 
 private:
-  std::unique_ptr<std::unique_ptr<T[]>[]> data;
-
-  T **raw_data;
+  T **raw_data = nullptr;
+  int size;
 };
 
 class timer {
