@@ -25,13 +25,20 @@ public:
     delete[] raw_data;
   }
 
-  T *serve(int index, int cnt) {
+  T *serve_elem(int index, int cnt) {
     if (size <= index)
       return nullptr;
 
     delete[] raw_data[index];
     raw_data[index] = new T[cnt];
     return raw_data[index];
+  }
+
+  T **serve(int cnt) {
+    delete[] raw_data;
+    raw_data = new T *[cnt]();
+    size = cnt;
+    return raw_data;
   }
 
   T **get() { return raw_data; }
