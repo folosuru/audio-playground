@@ -6,25 +6,14 @@
 #include "world/dio.h"
 
 #include "Utils.hpp"
+#include "whisper.hpp"
+
 #include "world/stonemask.h"
 #include "world/synthesis.h"
 
 #include <cstdlib>
 #include <memory>
 #include <print>
-
-struct WorldParams {
-  double frame_period;
-  int fs;
-
-  std::unique_ptr<double[]> f0;
-  std::unique_ptr<double[]> time_axis;
-  int f0_length;
-
-  CStyle2DArrCompat<double> spectrogram;
-  CStyle2DArrCompat<double> aperiodicity;
-  int fft_size;
-};
 
 void estimate_F0(double *x, int len, WorldParams &param) {
   DioOption option;
@@ -89,6 +78,24 @@ void estimate_aperiodicity(double *x, int len, WorldParams &param) {
   std::println(stderr, "D4C() take {} sec", d4c_take.seconds());
 }
 
+void output_with_whitenoize(const char *filename, WorldParams &param,
+                            CStyle2DArrCompat<double> &spectrogram) {
+  std::unique_ptr<double[]> zero_filled_f0 =
+      std::make_unique<double[]>(param.f0_length);
+  for (int i = 0; i < param.f0_length; i++) {
+    zero_filled_f0[i] = 0;
+  }
+
+  int y_len = 1 + static_cast<int>((param.f0_length - 1) * param.frame_period /
+                                   1000.0 * param.fs);
+  std::unique_ptr<double[]> y = std::make_unique<double[]>(y_len);
+  Synthesis(zero_filled_f0.get(), param.f0_length, spectrogram.get(),
+            param.aperiodicity.get(), param.fft_size, param.frame_period,
+            param.fs, y_len, y.get());
+
+  wavwrite(y.get(), y_len, param.fs, 16, filename);
+}
+
 int main(int argc, char *argv[]) {
   if (argc < 2) {
     std::println(stderr, "usage: {} [filename]", argv[0]);
@@ -120,22 +127,12 @@ int main(int argc, char *argv[]) {
   estimate_spectral_envelope(x.get(), len, param);
   estimate_aperiodicity(x.get(), len, param);
 
-  std::unique_ptr<double[]> zero_filled_f0 =
-      std::make_unique<double[]>(param.f0_length);
-  for (int i = 0; i < param.f0_length; i++) {
-    zero_filled_f0[i] = 0;
-  }
+  std::println(stderr, "analyse complete");
+  CStyle2DArrCompat<double> phantom_spectral = PhantomShilhouette(param);
 
-  int y_len = 1 + static_cast<int>((param.f0_length - 1) * param.frame_period /
-                                   1000.0 * param.fs);
-  std::unique_ptr<double[]> y = std::make_unique<double[]>(y_len);
-  Synthesis(zero_filled_f0.get(), param.f0_length, param.spectrogram.get(),
-            param.aperiodicity.get(), param.fft_size, param.frame_period,
-            param.fs, y_len, y.get());
-  wavwrite(y.get(), y_len, param.fs, 16, "out_white.wav");
+  output_with_whitenoize("low_cut.wav", param, phantom_spectral);
 
   int out_len;
   auto wave = freq_to_wave(param.f0.get(), param.f0_length, out_len);
-
   wavwrite(wave.get(), out_len, 44100, 16, "out.wav");
 }

@@ -8,6 +8,7 @@ add_subdirectory(external/World)
 add_executable(whisper
   main.cpp
   synthesizer.cpp
+  PhantomSilhouette.cpp
 
   external/World/tools/audioio.cpp
 )
