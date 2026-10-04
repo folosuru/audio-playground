@@ -9,6 +9,13 @@
 
 template <class T> class CStyle2DArrCompat {
 public:
+  struct element {
+    T *ref;
+    T *get() { return ref; }
+    T &operator[](size_t index) { return ref[index]; }
+    operator T *() const { return ref; }
+  };
+
   CStyle2DArrCompat(int cnt) : raw_data(new T *[cnt]()), size(cnt) {}
   CStyle2DArrCompat() : raw_data(nullptr), size(0) {}
   CStyle2DArrCompat(const CStyle2DArrCompat &) = delete;
@@ -73,7 +80,7 @@ public:
 
   T **get() { return raw_data; }
 
-  T *operator[](size_t index) { return raw_data[index]; }
+  element operator[](size_t index) { return {&raw_data[index]}; }
 
 private:
   T **raw_data = nullptr;

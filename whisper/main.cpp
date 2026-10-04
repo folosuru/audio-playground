@@ -12,6 +12,7 @@
 #include "world/synthesis.h"
 
 #include <cstdlib>
+#include <fstream>
 #include <memory>
 #include <print>
 
@@ -86,14 +87,32 @@ void output_with_whitenoize(const char *filename, WorldParams &param,
     zero_filled_f0[i] = 0;
   }
 
+  CStyle2DArrCompat<double> one_filled_aperiodicity;
+  one_filled_aperiodicity.serve_all(param.f0_length, param.fft_size / 2 + 1);
+  for (int i = 0; i < param.f0_length; ++i) {
+    for (int j = 0; j < param.fft_size / 2 + 1; ++j) {
+      one_filled_aperiodicity[i][j] = 1;
+    }
+  }
+
   int y_len = 1 + static_cast<int>((param.f0_length - 1) * param.frame_period /
                                    1000.0 * param.fs);
   std::unique_ptr<double[]> y = std::make_unique<double[]>(y_len);
-  Synthesis(zero_filled_f0.get(), param.f0_length, spectrogram.get(),
-            param.aperiodicity.get(), param.fft_size, param.frame_period,
+
+  Synthesis(param.f0.get(), param.f0_length, spectrogram.get(),
+            one_filled_aperiodicity.get(), param.fft_size, param.frame_period,
             param.fs, y_len, y.get());
 
   wavwrite(y.get(), y_len, param.fs, 16, filename);
+}
+
+void out_spectro(WorldParams &param, CStyle2DArrCompat<double> &arr) {
+  std::ofstream f("out.csv");
+
+  for (int j = 0; j < param.fft_size / 2 + 1; ++j) {
+    double bin_freq = static_cast<double>(j) * param.fs / param.fft_size;
+    f << bin_freq << "," << arr[param.f0_length / 2][j] << "\n";
+  }
 }
 
 int main(int argc, char *argv[]) {
@@ -130,7 +149,8 @@ int main(int argc, char *argv[]) {
   std::println(stderr, "analyse complete");
   CStyle2DArrCompat<double> phantom_spectral = PhantomShilhouette(param);
 
-  output_with_whitenoize("low_cut.wav", param, phantom_spectral);
+  out_spectro(param, phantom_spectral);
+  output_with_whitenoize("high_boost_low_cut.wav", param, phantom_spectral);
 
   int out_len;
   auto wave = freq_to_wave(param.f0.get(), param.f0_length, out_len);
