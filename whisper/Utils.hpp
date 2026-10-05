@@ -80,7 +80,7 @@ public:
 
   T **get() { return raw_data; }
 
-  element operator[](size_t index) { return {&raw_data[index]}; }
+  element operator[](size_t index) { return {raw_data[index]}; }
 
 private:
   T **raw_data = nullptr;

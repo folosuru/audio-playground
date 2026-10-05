@@ -17,11 +17,36 @@ static double GetF0Median(WorldParams &param) {
   return tmp[param.f0_length / 2];
 }
 
+static constexpr double erb(double f) { return 9.2645 * log(1 + f / 228.83); }
+
+static double reverse_erb(double E) { return 228.83 * (exp(E / 9.2645) - 1); }
+
 // return before freq by after
-static double F1_F2_Shift_transform(double after) {
+static double F1_F2_Shift_transform(double after, double f0_median) {
   if (1600 < after) {
     return after;
   }
+  if (1100 < after) {
+    const double start_x = erb(1100);
+    const double end_x = erb(1600);
+    const double start_y = erb(1000);
+    const double end_y = erb(1600);
+
+    const double input_erb = erb(after);
+    const double progress = ((input_erb - start_x) / (end_x - start_x));
+
+    return reverse_erb(std::lerp(start_y, end_y, progress));
+  }
+  const double start_x =
+      erb(std::lerp(600, 400, ((f0_median - 80) / (260 - 80))));
+  const double end_x = erb(1100);
+  const double start_y = erb(400);
+  const double end_y = erb(1000);
+
+  const double input_erb = erb(after);
+  const double progress = ((input_erb - start_x) / (end_x - start_x));
+
+  return reverse_erb(std::lerp(start_y, end_y, progress));
 }
 
 static void F1_F2_Shift(WorldParams &param, double f0_median,
@@ -34,6 +59,12 @@ static void F1_F2_Shift(WorldParams &param, double f0_median,
       if (1600 < target_bin_freq) {
         break;
       }
+      double shift_from = F1_F2_Shift_transform(target_bin_freq, f0_median);
+      int shift_index = shift_from * param.fft_size / param.fs;
+      if (shift_index < 0 || (param.fft_size / 2 + 1) <= shift_index) {
+        continue;
+      }
+      result[i][j] = param.spectrogram[i][shift_index];
     }
   }
 }
