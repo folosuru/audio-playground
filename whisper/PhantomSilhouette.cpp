@@ -13,7 +13,7 @@ static double GetF0Median(WorldParams &param) {
     tmp[i] = param.f0[i];
   }
   std::sort(tmp.get(), tmp.get() + param.f0_length);
-  std::println(stderr, "median of f0: {}", tmp[param.f0_length / 2]);
+  std::println(stderr, "F0 median: {}", tmp[param.f0_length / 2]);
   return tmp[param.f0_length / 2];
 }
 
@@ -50,8 +50,11 @@ static double F1_F2_Shift_transform(double after, double f0_median) {
 }
 
 static void F1_F2_Shift(WorldParams &param, double f0_median,
-                        CStyle2DArrCompat<double> &result) {
+                        CStyle2DArrayCompat<double> &result) {
   for (int i = 0; i < param.f0_length; ++i) {
+    auto result_array = result[i];
+    auto from_array = param.spectrogram[i];
+
     for (int j = 0; j < param.fft_size / 2 + 1; ++j) {
       double target_bin_freq =
           static_cast<double>(j) * param.fs / param.fft_size;
@@ -60,17 +63,18 @@ static void F1_F2_Shift(WorldParams &param, double f0_median,
         break;
       }
       double shift_from = F1_F2_Shift_transform(target_bin_freq, f0_median);
-      int shift_index = shift_from * param.fft_size / param.fs;
+      int shift_index =
+          static_cast<int>(shift_from * param.fft_size / param.fs);
       if (shift_index < 0 || (param.fft_size / 2 + 1) <= shift_index) {
         continue;
       }
-      result[i][j] = param.spectrogram[i][shift_index];
+      result_array[j] = from_array[shift_index];
     }
   }
 }
 
 static void HighFreqCompensation(WorldParams &param, double f0_median,
-                                 CStyle2DArrCompat<double> &result) {
+                                 CStyle2DArrayCompat<double> &result) {
   const double compensation_max = (-0.0064 * f0_median + 2.75);
   std::println("compensation max: {}", compensation_max);
   if (compensation_max <= 1) {
@@ -96,7 +100,7 @@ static void HighFreqCompensation(WorldParams &param, double f0_median,
 }
 
 static void LowFreqSuppression(WorldParams &param, double f0_median,
-                               CStyle2DArrCompat<double> &result) {
+                               CStyle2DArrayCompat<double> &result) {
   for (int i = 0; i < param.f0_length; ++i) {
     for (int j = 0; j < param.fft_size / 2 + 1; ++j) {
       double bin_freq = static_cast<double>(j) * param.fs / param.fft_size;
@@ -114,9 +118,9 @@ static void LowFreqSuppression(WorldParams &param, double f0_median,
   }
 }
 
-CStyle2DArrCompat<double> PhantomShilhouette(WorldParams &param) {
-  CStyle2DArrCompat<double> result;
-  result.serve_all(param.f0_length, param.fft_size / 2 + 1);
+CStyle2DArrayCompat<double> PhantomShilhouette(WorldParams &param) {
+  CStyle2DArrayCompat<double> result;
+  result.serve(param.f0_length, param.fft_size / 2 + 1);
 
   for (int i = 0; i < param.f0_length; ++i) {
     for (int j = 0; j < param.fft_size / 2 + 1; ++j) {

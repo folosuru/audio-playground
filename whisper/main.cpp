@@ -16,79 +16,16 @@
 #include <memory>
 #include <print>
 
-void estimate_F0(double *x, int len, WorldParams &param) {
-  DioOption option;
-  InitializeDioOption(&option);
-  option.frame_period = param.frame_period;
-  option.speed = 1;
-  option.f0_floor = world::kFloorF0;
-  option.allowed_range = 0.1;
-  param.f0_length = GetSamplesForDIO(param.fs, len, param.frame_period);
-  param.f0 = std::make_unique<double[]>(param.f0_length);
-  param.time_axis = std::make_unique<double[]>(param.f0_length);
-
-  std::unique_ptr<double[]> tmp_f0 =
-      std::make_unique<double[]>(param.f0_length);
-
-  auto dio_erappse = timer([&]() {
-    Dio(x, len, param.fs, &option, param.time_axis.get(), tmp_f0.get());
-  });
-  std::println(stderr, "Dio() take {} sec", dio_erappse.seconds());
-
-  auto stonemase_erappse = timer([&]() {
-    StoneMask(x, len, param.fs, param.time_axis.get(), tmp_f0.get(),
-              param.f0_length, param.f0.get());
-  });
-  std::println(stderr, "StoneMask() take {} sec", stonemase_erappse.seconds());
-}
-
-void estimate_spectral_envelope(double *x, int len, WorldParams &params) {
-  CheapTrickOption option;
-  InitializeCheapTrickOption(params.fs, &option);
-  option.q1 = -0.15;
-  option.f0_floor = 71.0;
-
-  params.fft_size = GetFFTSizeForCheapTrick(params.fs, &option);
-  params.spectrogram.serve(params.f0_length);
-  for (int i = 0; i < params.f0_length; ++i) {
-    params.spectrogram.serve_elem(i, params.fft_size / 2 + 1);
-  }
-  std::println(stderr, "a");
-
-  auto take = timer([&]() {
-    CheapTrick(x, len, params.fs, params.time_axis.get(), params.f0.get(),
-               params.f0_length, &option, params.spectrogram.get());
-  });
-
-  std::println(stderr, "CheapTrick() take {} sec", take.seconds());
-}
-
-void estimate_aperiodicity(double *x, int len, WorldParams &param) {
-  D4COption option;
-  InitializeD4COption(&option);
-
-  param.aperiodicity.serve(param.f0_length);
-  for (int i = 0; i < param.f0_length; i++) {
-    param.aperiodicity.serve_elem(i, param.fft_size / 2 + 1);
-  }
-  auto d4c_take = timer([&]() {
-    D4C(x, len, param.fs, param.time_axis.get(), param.f0.get(),
-        param.f0_length, param.fft_size, &option, param.aperiodicity.get());
-  });
-
-  std::println(stderr, "D4C() take {} sec", d4c_take.seconds());
-}
-
 void output_with_whitenoize(const char *filename, WorldParams &param,
-                            CStyle2DArrCompat<double> &spectrogram) {
+                            CStyle2DArrayCompat<double> &spectrogram) {
   std::unique_ptr<double[]> zero_filled_f0 =
       std::make_unique<double[]>(param.f0_length);
   for (int i = 0; i < param.f0_length; i++) {
     zero_filled_f0[i] = 0;
   }
 
-  CStyle2DArrCompat<double> one_filled_aperiodicity;
-  one_filled_aperiodicity.serve_all(param.f0_length, param.fft_size / 2 + 1);
+  CStyle2DArrayCompat<double> one_filled_aperiodicity;
+  one_filled_aperiodicity.serve(param.f0_length, param.fft_size / 2 + 1);
   for (int i = 0; i < param.f0_length; ++i) {
     for (int j = 0; j < param.fft_size / 2 + 1; ++j) {
       one_filled_aperiodicity[i][j] = 1;
@@ -106,7 +43,7 @@ void output_with_whitenoize(const char *filename, WorldParams &param,
   wavwrite(y.get(), y_len, param.fs, 16, filename);
 }
 
-void out_spectro(WorldParams &param, CStyle2DArrCompat<double> &arr) {
+void out_spectro(WorldParams &param, CStyle2DArrayCompat<double> &arr) {
   std::ofstream f("out.csv");
 
   for (int j = 0; j < param.fft_size / 2 + 1; ++j) {
@@ -116,43 +53,26 @@ void out_spectro(WorldParams &param, CStyle2DArrCompat<double> &arr) {
 }
 
 int main(int argc, char *argv[]) {
-  if (argc < 2) {
-    std::println(stderr, "usage: {} [filename]", argv[0]);
+  if (argc < 3) {
+    std::println(stderr, "usage: {} [filename] [output filename]", argv[0]);
     exit(1);
   }
   const char *input_file = argv[1];
+  const char *output_file = argv[2];
 
-  int len = GetAudioLength(input_file);
-  if (len <= 0) {
-    std::println(stderr, "GetAudioLength returns {}.", len);
-    exit(1);
-  }
+  std::ifstream data(input_file);
 
-  std::unique_ptr<double[]> x = std::make_unique<double[]>(len);
+  bool read_result;
+  WorldParams param = WorldParams::read(data, read_result);
 
-  int fs, nbit;
-  wavread(input_file, &fs, &nbit, x.get());
   std::print(stderr,
-             "File Info:\n"
-             "{} Hz {} bit wav\n"
-             "{} samples\n{} sec\n",
-             fs, nbit, len, static_cast<double>(len) / fs);
+             "File: {}\n"
+             "info: {} Hz / f0_len: {} / "
+             "fft_size: {} \n",
+             argv[1], param.fs, param.f0_length, param.fft_size);
+  std::string csv_filename = std::string(output_file) + ".f0.csv";
+  csv_out(csv_filename.c_str(), param.f0, param.f0_length);
 
-  WorldParams param;
-  param.fs = fs;
-  param.frame_period = 5.0;
-
-  estimate_F0(x.get(), len, param);
-  estimate_spectral_envelope(x.get(), len, param);
-  estimate_aperiodicity(x.get(), len, param);
-
-  std::println(stderr, "analyse complete");
-  CStyle2DArrCompat<double> phantom_spectral = PhantomShilhouette(param);
-
-  out_spectro(param, phantom_spectral);
-  output_with_whitenoize("high_boost_low_cut.wav", param, phantom_spectral);
-
-  int out_len;
-  auto wave = freq_to_wave(param.f0.get(), param.f0_length, out_len);
-  wavwrite(wave.get(), out_len, 44100, 16, "out.wav");
+  CStyle2DArrayCompat<double> phantom_spectral = PhantomShilhouette(param);
+  output_with_whitenoize(output_file, param, phantom_spectral);
 }

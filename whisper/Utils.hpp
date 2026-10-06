@@ -2,89 +2,82 @@
 #define INCLUDE_WHISPER_UTILS_HPP_
 #include <chrono>
 #include <cstddef>
-#include <iomanip>
-#include <ios>
-#include <ostream>
-#include <utility>
+#include <cstdio>
+#include <iosfwd>
+#include <memory>
+#include <print>
+#include <span>
+#include <type_traits>
 
-template <class T> class CStyle2DArrCompat {
+template <class T> class CStyle2DArrayCompat {
 public:
-  struct element {
-    T *ref;
-    T *get() { return ref; }
-    T &operator[](size_t index) { return ref[index]; }
-    operator T *() const { return ref; }
-  };
-
-  CStyle2DArrCompat(int cnt) : raw_data(new T *[cnt]()), size(cnt) {}
-  CStyle2DArrCompat() : raw_data(nullptr), size(0) {}
-  CStyle2DArrCompat(const CStyle2DArrCompat &) = delete;
-  CStyle2DArrCompat &operator=(const CStyle2DArrCompat &) = delete;
-
-  CStyle2DArrCompat(CStyle2DArrCompat &&other) noexcept
-      : raw_data(other.raw_data), size(other.size) {
-    other.raw_data = nullptr;
-    other.size = 0;
+  CStyle2DArrayCompat() = default;
+  CStyle2DArrayCompat(size_t d1_, size_t d2_) : d1(d1_), d2(d2_) {
+    serve(d1, d2);
   }
+  CStyle2DArrayCompat(CStyle2DArrayCompat &&other) noexcept
+      : d1(std::exchange(other.d1, 0)), d2(std::exchange(other.d2, 0)),
+        data(std::move(other.data)), data_index(std::move(other.data_index)) {}
 
-  CStyle2DArrCompat &operator=(CStyle2DArrCompat &&other) noexcept {
+  CStyle2DArrayCompat &operator=(CStyle2DArrayCompat &&other) noexcept {
     if (this != &other) {
-      reset();
-      raw_data = other.raw_data;
-      size = other.size;
-      other.raw_data = nullptr;
-      other.size = 0;
+      d1 = std::exchange(other.d1, 0);
+      d2 = std::exchange(other.d2, 0);
+      data = std::move(other.data);
+      data_index = std::move(other.data_index);
     }
     return *this;
   }
 
-  ~CStyle2DArrCompat() { reset(); }
-
-  void reset() {
-    if (raw_data == nullptr)
-      return;
-
-    for (int i = 0; i < size; i++) {
-      if (raw_data[i] == nullptr)
-        continue;
-
-      delete[] raw_data[i];
-    }
-    delete[] raw_data;
-    raw_data = nullptr;
-    size = 0;
+  void serve(size_t d1_, size_t d2_) {
+    d1 = d1_;
+    d2 = d2_;
+    data = std::make_unique<T[]>(d1 * d2);
+    set_data_index();
   }
 
-  T *serve_elem(int index, int cnt) {
-    if (size <= index)
-      return nullptr;
+  T *operator[](size_t index) noexcept { return &data[index * d2]; }
+  T **get() { return data_index.get(); }
 
-    delete[] raw_data[index];
-    raw_data[index] = new T[cnt];
-    return raw_data[index];
+  size_t index_size() const { return d1; }
+  size_t array_size() const { return d2; }
+  size_t size() const { return d1 * d2; }
+
+  std::span<T> get_array(size_t index) {
+    return std::span<T>((*this)[index], d2);
   }
 
-  void serve_all(int array_count, int array_size) {
-    serve(array_count);
-    for (int i = 0; i < array_count; i++) {
-      serve_elem(i, array_size);
-    }
+  void write(std::ostream &os) const {
+    static_assert(std::is_trivially_copyable<T>::value);
+    os.write(reinterpret_cast<const char *>(&d1), sizeof(d1));
+    os.write(reinterpret_cast<const char *>(&d2), sizeof(d2));
+    os.write(reinterpret_cast<const char *>(data.get()), sizeof(T) * d1 * d2);
   }
-
-  T **serve(int cnt) {
-    delete[] raw_data;
-    raw_data = new T *[cnt]();
-    size = cnt;
-    return raw_data;
+  static CStyle2DArrayCompat read(std::istream &is) {
+    static_assert(std::is_trivially_copyable<T>::value);
+    size_t d1, d2;
+    is.read(reinterpret_cast<char *>(&d1), sizeof(d1));
+    is.read(reinterpret_cast<char *>(&d2), sizeof(d2));
+    std::unique_ptr<T[]> buf = std::make_unique<T[]>(d1 * d2);
+    is.read(reinterpret_cast<char *>(buf.get()), sizeof(T) * d1 * d2);
+    return CStyle2DArrayCompat(d1, d2, std::move(buf));
   }
-
-  T **get() { return raw_data; }
-
-  element operator[](size_t index) { return {raw_data[index]}; }
 
 private:
-  T **raw_data = nullptr;
-  int size = 0;
+  CStyle2DArrayCompat(size_t d1_, size_t d2_, std::unique_ptr<T[]> data_)
+      : d1(d1_), d2(d2_), data(std::move(data_)) {
+    set_data_index();
+  }
+  void set_data_index() {
+    data_index = std::make_unique<T *[]>(d1);
+    for (size_t i = 0; i < d1; ++i) {
+      data_index[i] = &data[i * d2];
+    }
+  }
+
+  size_t d1 = 0, d2 = 0;
+  std::unique_ptr<T[]> data;
+  std::unique_ptr<T *[]> data_index;
 };
 
 class timer {
@@ -107,8 +100,19 @@ public:
   std::chrono::time_point<std::chrono::system_clock> start, end;
 };
 
-inline std::ostream &operator<<(std::ostream &os, timer &t) {
-  return os << std::fixed << std::setprecision(6) << t.seconds();
-}
+class ProgressTimer {
+public:
+  template <class func_t> ProgressTimer(const char *title, func_t function) {
+    std::print(stderr, "-> {}", title);
+    std::fflush(stderr);
+    auto time = timer(function);
+    std::println(stderr, " ({} sec) ", time.seconds());
+  }
+};
+
+std::ostream &operator<<(std::ostream &os, timer &t);
+
+void csv_out(const char *filename, const std::unique_ptr<double[]> &array,
+             size_t len);
 
 #endif // INCLUDE_WHISPER_UTILS_HPP_
