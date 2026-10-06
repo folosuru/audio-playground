@@ -3,9 +3,13 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <ctime>
+#include <limits>
 #include <memory>
 #include <numbers>
 #include <print>
+#include <string>
+#include <vector>
 
 static double GetF0Median(WorldParams &param) {
   std::unique_ptr<double[]> tmp = std::make_unique<double[]>(param.f0_length);
@@ -13,8 +17,16 @@ static double GetF0Median(WorldParams &param) {
     tmp[i] = param.f0[i];
   }
   std::sort(tmp.get(), tmp.get() + param.f0_length);
-  std::println(stderr, "F0 median: {}", tmp[param.f0_length / 2]);
-  return tmp[param.f0_length / 2];
+  int not_0_start = 0;
+  for (; not_0_start < param.f0_length; not_0_start++) {
+    if (tmp[not_0_start] <= std::numeric_limits<double>::epsilon()) {
+      continue;
+    }
+    break;
+  }
+  const int midpoint = ((param.f0_length - not_0_start) / 2) + not_0_start;
+  std::println(stderr, "F0 median: {}", tmp[midpoint]);
+  return tmp[midpoint];
 }
 
 static constexpr double erb(double f) { return 9.2645 * log(1 + f / 228.83); }
@@ -23,7 +35,7 @@ static double reverse_erb(double E) { return 228.83 * (exp(E / 9.2645) - 1); }
 
 // return before freq by after
 static double F1_F2_Shift_transform(double after, double f0_median) {
-  if (1600 < after) {
+  if (1600 <= after) {
     return after;
   }
   if (1100 < after) {
@@ -132,5 +144,6 @@ CStyle2DArrayCompat<double> PhantomShilhouette(WorldParams &param) {
   F1_F2_Shift(param, F0_median, result);
   HighFreqCompensation(param, F0_median, result);
   LowFreqSuppression(param, F0_median, result);
+
   return result;
 }
