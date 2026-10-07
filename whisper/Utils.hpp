@@ -3,8 +3,10 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdio>
+#include <functional>
 #include <iosfwd>
 #include <memory>
+#include <optional>
 #include <print>
 #include <span>
 #include <type_traits>
@@ -94,7 +96,9 @@ public:
   double seconds() {
     using std::chrono::duration_cast;
     using std::chrono::nanoseconds;
-    return duration_cast<nanoseconds>(delta()).count() / 1000000000.0;
+    double time_nanosec =
+        static_cast<double>(duration_cast<nanoseconds>(delta()).count());
+    return time_nanosec / 1000000000.0;
   }
 
   std::chrono::time_point<std::chrono::system_clock> start, end;
@@ -112,7 +116,23 @@ public:
 
 std::ostream &operator<<(std::ostream &os, timer &t);
 
-void csv_out(const char *filename, const std::unique_ptr<double[]> &array,
-             size_t len);
+namespace csv {
+struct data_row {
+  const std::unique_ptr<double[]> &array;
+  size_t len;
+  std::optional<const char *> name = std::nullopt;
+};
+struct axis_row {
+  std::function<double(size_t)> axis_gen;
+  std::optional<const char *> name = std::nullopt;
+};
 
+void file_out(const char *filename, data_row data, axis_row axis, int step = 1);
+
+void file_out(const char *filename, CStyle2DArrayCompat<double> &array,
+              const char *first_cell_data,
+              std::function<double(size_t)> d1_axis_gen,
+              std::function<double(size_t)> d2_axis_gen, int d1_step = 1,
+              int d2_step = 1);
+} // namespace csv
 #endif // INCLUDE_WHISPER_UTILS_HPP_

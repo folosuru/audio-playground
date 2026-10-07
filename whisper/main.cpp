@@ -1,14 +1,8 @@
 #include "external/World/tools/audioio.h"
-#include "synthesizer.hpp"
-#include "world/cheaptrick.h"
-#include "world/constantnumbers.h"
-#include "world/d4c.h"
-#include "world/dio.h"
 
 #include "Utils.hpp"
 #include "whisper.hpp"
 
-#include "world/stonemask.h"
 #include "world/synthesis.h"
 
 #include <cstdlib>
@@ -16,6 +10,7 @@
 #include <memory>
 #include <print>
 
+namespace {
 void output_with_whitenoize(const char *filename, WorldParams &param,
                             CStyle2DArrayCompat<double> &spectrogram) {
   std::unique_ptr<double[]> zero_filled_f0 =
@@ -42,23 +37,16 @@ void output_with_whitenoize(const char *filename, WorldParams &param,
 
   wavwrite(y.get(), y_len, param.fs, 16, filename);
 }
-
-void out_spectro(WorldParams &param, CStyle2DArrayCompat<double> &arr) {
-  std::ofstream f("out.csv");
-
-  for (int j = 0; j < param.fft_size / 2 + 1; ++j) {
-    double bin_freq = static_cast<double>(j) * param.fs / param.fft_size;
-    f << bin_freq << "," << arr[param.f0_length / 2][j] << "\n";
-  }
-}
+} // namespace
 
 int main(int argc, char *argv[]) {
   if (argc < 3) {
     std::println(stderr, "usage: {} [filename] [output filename]", argv[0]);
     exit(1);
   }
-  const char *input_file = argv[1];
-  const char *output_file = argv[2];
+  std::span<char *> args(argv, argc);
+  const char *input_file = args[1];
+  const char *output_file = args[2];
 
   std::ifstream data(input_file);
 
@@ -69,9 +57,7 @@ int main(int argc, char *argv[]) {
              "File: {}\n"
              "info: {} Hz / f0_len: {} / "
              "fft_size: {} \n",
-             argv[1], param.fs, param.f0_length, param.fft_size);
-  std::string csv_filename = std::string(output_file) + ".f0.csv";
-  csv_out(csv_filename.c_str(), param.f0, param.f0_length);
+             input_file, param.fs, param.f0_length, param.fft_size);
 
   CStyle2DArrayCompat<double> phantom_spectral = PhantomShilhouette(param);
   output_with_whitenoize(output_file, param, phantom_spectral);

@@ -18,7 +18,7 @@ for filepath in "$TARGET_DIR"/*; do
         wav_file="./run/${filename}.out.wav"
 
         if [ ! -f "$bin_file" ] || [ "$ANALYZE_BIN" -nt "$bin_file" ]; then
-            "$ANALYZE_BIN" "$filepath" "$bin_file"
+            "$ANALYZE_BIN" "$filepath" "$bin_file" -s -f0
         else
             echo "[SKIP] $filename (.bin is up-to-date)"
         fi

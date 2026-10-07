@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_executable(analyze
   main.cpp
+  world_wrapper.cpp
   ../external/World/tools/audioio.cpp
 )
 target_link_libraries(analyze PRIVATE world util)

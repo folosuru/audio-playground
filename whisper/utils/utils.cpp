@@ -63,12 +63,3 @@ WorldParams WorldParams::read(std::istream &is, bool &success) {
   success = true;
   return result;
 }
-
-void csv_out(const char *filename, const std::unique_ptr<double[]> &array,
-             size_t len) {
-  std::ofstream file(filename);
-
-  for (int i = 0; i < len; ++i) {
-    file << array[i] << ", ";
-  }
-}

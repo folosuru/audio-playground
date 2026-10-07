@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_library(util
   utils.cpp
+  csv.cpp
 )
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")

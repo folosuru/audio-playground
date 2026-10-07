@@ -8,8 +8,6 @@
 #include <memory>
 #include <numbers>
 #include <print>
-#include <string>
-#include <vector>
 
 static double GetF0Median(WorldParams &param) {
   std::unique_ptr<double[]> tmp = std::make_unique<double[]>(param.f0_length);
