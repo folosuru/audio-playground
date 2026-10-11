@@ -2,6 +2,7 @@
 #define INCLUDE_WHISPER_WHISPER_HPP_
 
 #include "Utils.hpp"
+#include <cstddef>
 #include <istream>
 #include <ostream>
 
@@ -18,6 +19,9 @@ struct WorldParams {
 
   static WorldParams read(std::istream &, bool &success);
   void write(std::ostream &);
+  double index_to_freq(size_t i) const {
+    return static_cast<double>(i) * fs * fft_size;
+  }
 };
 
 CStyle2DArrayCompat<double> PhantomShilhouette(WorldParams &param);
